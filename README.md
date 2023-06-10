@@ -2,7 +2,8 @@
 
 D3D12 single C file samples for Win32. No dependencies. No build systems. No project files.
 
-### Setup compilation environment. For example to setup Visual Studio 2022 open cmdline and call:
+### Setup development environment
+For example to setup Visual Studio 2022 x64 open cmdline and call:
 ```
 $ call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 ```
