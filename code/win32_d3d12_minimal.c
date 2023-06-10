@@ -9,6 +9,7 @@
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include <dxgi1_6.h>
+#include <d3d12sdklayers.h>
 #pragma warning(pop)
 
 #include <stdint.h>
@@ -68,7 +69,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     u32 ResY = SmallWindow ? 540 : 720;
 
     HWND Window = NULL;
-
     {
         WNDCLASSEX WindowClass = {0};
         WindowClass.cbSize        = sizeof(WNDCLASSEX);
@@ -121,18 +121,23 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     #if DEBUG_ENABLED
     ID3D12Debug *DebugInterface = NULL;
-
     {
         Result = D3D12GetDebugInterface(&IID_ID3D12Debug, &DebugInterface);
         AssertHR(Result);
 
         ID3D12Debug_EnableDebugLayer(DebugInterface);
+
+        ID3D12Debug1 *DebugInterface1 = NULL;
+        Result = ID3D12Debug_QueryInterface(DebugInterface, &IID_ID3D12Debug1, &DebugInterface1);
+        AssertHR(Result);
+
+        ID3D12Debug1_SetEnableGPUBasedValidation(DebugInterface1, TRUE);
+        ID3D12Debug1_Release(DebugInterface1);
     }
     #endif
 
 
     IDXGIFactory4 *Factory = NULL;
-
     {
         UINT Flags = 0;
         #if DEBUG_ENABLED
@@ -146,13 +151,11 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     }
 
 
-
     // Enumerate hardware that support Direct3D 12.1
     D3D_FEATURE_LEVEL MaximumFeatureLevel = D3D_FEATURE_LEVEL_12_1;
     D3D_FEATURE_LEVEL MinimumFeatureLevel = MaximumFeatureLevel;
 
     IDXGIAdapter1 *Adapter = NULL;
-
     {
         for(u32 AdapterIndex = 0; DXGI_ERROR_NOT_FOUND != IDXGIFactory1_EnumAdapters1(Factory, AdapterIndex, &Adapter); ++AdapterIndex)
         {
@@ -173,7 +176,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     // Create device
     ID3D12Device* Device = NULL;
-
     {
         Result = D3D12CreateDevice((IUnknown*)Adapter, MinimumFeatureLevel, &IID_ID3D12Device, &Device);
         AssertHR(Result);
@@ -216,7 +218,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     // Create direct command queue
     ID3D12CommandQueue *DirectQueue = NULL;
-
     {
         D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {0};
         CommandQueueDesc.Type     = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -231,8 +232,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     // Create double buffered SwapChain
     IDXGISwapChain4 *SwapChain = NULL;
-    ID3D12Resource *RenderTargets[2] = {0};
-
+    ID3D12Resource *BackBuffers[2] = {0};
     {
         DXGI_SWAP_CHAIN_DESC1 SwapChainDesc = {0};
         SwapChainDesc.Width              = ResX;
@@ -242,7 +242,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         SwapChainDesc.SampleDesc.Count   = 1;
         SwapChainDesc.SampleDesc.Quality = 0;
         SwapChainDesc.BufferUsage        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        SwapChainDesc.BufferCount        = ArrayCount(RenderTargets);
+        SwapChainDesc.BufferCount        = ArrayCount(BackBuffers);
         SwapChainDesc.Scaling            = DXGI_SCALING_NONE;
         SwapChainDesc.SwapEffect         = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         SwapChainDesc.AlphaMode          = DXGI_ALPHA_MODE_UNSPECIFIED;
@@ -255,15 +255,15 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     // This sample does not support fullscreen transitions
     IDXGIFactory4_MakeWindowAssociation(Factory, Window, DXGI_MWA_NO_ALT_ENTER);
 
-    u32 FrameIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
+    // Get current back buffer index
+    u32 BackBufferIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
 
     // Create render target descriptor heaps
     ID3D12DescriptorHeap *RtvDescriptorHeap = NULL;
-
     {
         D3D12_DESCRIPTOR_HEAP_DESC DescriptorHeapDesc = {0};
         DescriptorHeapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        DescriptorHeapDesc.NumDescriptors = ArrayCount(RenderTargets);
+        DescriptorHeapDesc.NumDescriptors = ArrayCount(BackBuffers);
         DescriptorHeapDesc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         DescriptorHeapDesc.NodeMask       = 0;
 
@@ -284,19 +284,18 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         D3D12_CPU_DESCRIPTOR_HANDLE RtvDescriptorHandle = {0};
         GetCPUDescriptorHandleForHeapStart(RtvDescriptorHeap, &RtvDescriptorHandle);
 
-        for(u32 RenderTargetIndex = 0; RenderTargetIndex < ArrayCount(RenderTargets); ++RenderTargetIndex)
+        for(u32 BufferIndex = 0; BufferIndex < ArrayCount(BackBuffers); ++BufferIndex)
         {
-            Result = IDXGISwapChain1_GetBuffer(SwapChain, RenderTargetIndex, &IID_ID3D12Resource, &RenderTargets[RenderTargetIndex]);
+            Result = IDXGISwapChain1_GetBuffer(SwapChain, BufferIndex, &IID_ID3D12Resource, &BackBuffers[BufferIndex]);
             AssertHR(Result);
 
-            ID3D12Device_CreateRenderTargetView(Device, RenderTargets[RenderTargetIndex], NULL, RtvDescriptorHandle);
+            ID3D12Device_CreateRenderTargetView(Device, BackBuffers[BufferIndex], NULL, RtvDescriptorHandle);
             RtvDescriptorHandle.ptr += RtvDescriptorSize;
         }
     }
 
     // Create command allocator
     ID3D12CommandAllocator *DirectQueueCommandAllocator = NULL;
-
     {
         Result = ID3D12Device_CreateCommandAllocator(Device, D3D12_COMMAND_LIST_TYPE_DIRECT, &IID_ID3D12CommandAllocator, &DirectQueueCommandAllocator);
         AssertHR(Result);
@@ -308,7 +307,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     // Create an empty root signature
     ID3D12RootSignature *RootSignature = NULL;
-
     {
         D3D12_VERSIONED_ROOT_SIGNATURE_DESC RootSignatureDesc = {0};
         RootSignatureDesc.Version        = D3D_ROOT_SIGNATURE_VERSION_1_0;
@@ -327,7 +325,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     // Create pipeline state object (PSO)
     ID3D12PipelineState *PSO = NULL;
-
     {
         ID3DBlob *VertexShader = NULL;
         ID3DBlob *PixelShader  = NULL;
@@ -445,9 +442,8 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         ID3D10Blob_Release(PixelShader);
     }
 
-    // Create the command list
+    // Create the command list from the command allocator
     ID3D12GraphicsCommandList *CommandList = NULL;
-
     {
         Result = ID3D12Device_CreateCommandList(Device, 0, D3D12_COMMAND_LIST_TYPE_DIRECT, DirectQueueCommandAllocator, PSO, &IID_ID3D12CommandList, &CommandList);
         AssertHR(Result);
@@ -461,7 +457,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     // Create the vertex buffer
     ID3D12Resource *VertexBuffer = NULL;
     D3D12_VERTEX_BUFFER_VIEW VertexBufferView = {0};
-
     {
         const f32 AspectRatio = (f32)ResX/(f32)ResY;
         const f32 Vertices[] = 
@@ -513,7 +508,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     ID3D12Fence *Fence = NULL;
     HANDLE FenceEvent = NULL;
     u64 FenceValue = 0;
-
     {
         Result = ID3D12Device_CreateFence(Device, FenceValue, D3D12_FENCE_FLAG_NONE, &IID_ID3D12Fence, &Fence);
         AssertHR(Result);
@@ -526,6 +520,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         // Wait for the command queue to complete execution
         {
             u64 CurrentFenceValue = FenceValue;
+
+            // Issue signaling fence from the GPU.
+            // The fence is not signaled immediately but is only signaled once the GPU command queue has reached that point during execution.
+            // Any commands that have been queued before the signal method was invoked must complete execution before the fence will be signaled.
             Result = ID3D12CommandQueue_Signal(DirectQueue, Fence, CurrentFenceValue);
             AssertHR(Result);
 
@@ -534,13 +532,14 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
             u64 Completed = ID3D12Fence_GetCompletedValue(Fence);
             if(Completed < CurrentFenceValue)
             {
+                // Specify event to be signaled when the fence reaches given value
                 Result = ID3D12Fence_SetEventOnCompletion(Fence, CurrentFenceValue, FenceEvent);
                 AssertHR(Result);
 
+                // Blocking wait util event is signaled
                 WaitForSingleObject(FenceEvent, INFINITE);
             }
-
-            FrameIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
+            BackBufferIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
         }
     }
 
@@ -552,7 +551,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
 
     for(;;)
     {
-        MSG Message;
+        MSG Message = {0};
         if(PeekMessage(&Message, NULL, 0, 0, PM_REMOVE))
         {
             if(Message.message == WM_QUIT)
@@ -588,7 +587,6 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
                         .MaxDepth = 0.0f
                     }
                 };
-
                 ID3D12GraphicsCommandList_RSSetViewports(CommandList, ArrayCount(Viewports), Viewports);
             }
 
@@ -603,14 +601,11 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
                         .bottom = ResY
                     }
                 };
-
                 ID3D12GraphicsCommandList_RSSetScissorRects(CommandList, ArrayCount(ScissorRectangles), ScissorRectangles);
             }
 
-
             // Indicate that the back buffer will be used as a render target
             D3D12_CPU_DESCRIPTOR_HANDLE RtvDescriptorHandle = {0};
-
             {
                 D3D12_RESOURCE_BARRIER ResourceBarriers[] = 
                 {
@@ -619,14 +614,13 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
                         .Flags      = D3D12_RESOURCE_BARRIER_FLAG_NONE,
                         .Transition = 
                         {
-                            .pResource   = RenderTargets[FrameIndex],
+                            .pResource   = BackBuffers[BackBufferIndex],
                             .StateBefore = D3D12_RESOURCE_STATE_PRESENT,
                             .StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET,
                             .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES
                         }
                     }
                 };
-
                 ID3D12GraphicsCommandList_ResourceBarrier(CommandList, ArrayCount(ResourceBarriers), ResourceBarriers);
 
 
@@ -637,10 +631,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
                 get_cpu_descriptor_handle_for_heap_start *GetCPUDescriptorHandleForHeapStart = (get_cpu_descriptor_handle_for_heap_start *)RtvDescriptorHeap->lpVtbl->GetCPUDescriptorHandleForHeapStart;
 
                 GetCPUDescriptorHandleForHeapStart(RtvDescriptorHeap, &RtvDescriptorHandle);
-                if(FrameIndex > 0)
+                if(BackBufferIndex > 0)
                 {
                     u32 Size = ID3D12Device_GetDescriptorHandleIncrementSize(Device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-                    RtvDescriptorHandle.ptr += FrameIndex * Size;
+                    RtvDescriptorHandle.ptr += BackBufferIndex * Size;
                 }
 
                 ID3D12GraphicsCommandList_OMSetRenderTargets(CommandList, 1, &RtvDescriptorHandle, FALSE, NULL);
@@ -661,14 +655,13 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
                         .Flags      = D3D12_RESOURCE_BARRIER_FLAG_NONE,
                         .Transition = 
                         {
-                            .pResource   = RenderTargets[FrameIndex],
+                            .pResource   = BackBuffers[BackBufferIndex],
                             .StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET,
                             .StateAfter  = D3D12_RESOURCE_STATE_PRESENT,
                             .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES
                         }
                     }
                 };
-
                 ID3D12GraphicsCommandList_ResourceBarrier(CommandList, ArrayCount(ResourceBarriers), ResourceBarriers);
             }
 
@@ -695,6 +688,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         // Wait for the command queue to complete execution
         {
             u64 CurrentFenceValue = FenceValue;
+
+            // Issue signaling fence from the GPU.
+            // The fence is not signaled immediately but is only signaled once the GPU command queue has reached that point during execution.
+            // Any commands that have been queued before the signal method was invoked must complete execution before the fence will be signaled.
             Result = ID3D12CommandQueue_Signal(DirectQueue, Fence, CurrentFenceValue);
             AssertHR(Result);
 
@@ -703,14 +700,16 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
             u64 Completed = ID3D12Fence_GetCompletedValue(Fence);
             if(Completed < CurrentFenceValue)
             {
+                // Specify event to be signaled when the fence reaches given value
                 Result = ID3D12Fence_SetEventOnCompletion(Fence, CurrentFenceValue, FenceEvent);
                 AssertHR(Result);
 
+                // Blocking wait util event is signaled
                 WaitForSingleObject(FenceEvent, INFINITE);
             }
 
-            FrameIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
-            Assert(FrameIndex < ArrayCount(RenderTargets));
+            BackBufferIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
+            Assert(BackBufferIndex < ArrayCount(BackBuffers));
         }
     }
 
@@ -720,6 +719,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     // Wait for the command queue to complete execution
     {
         u64 CurrentFenceValue = FenceValue;
+
+        // Issue signaling fence from the GPU.
+        // The fence is not signaled immediately but is only signaled once the GPU command queue has reached that point during execution.
+        // Any commands that have been queued before the signal method was invoked must complete execution before the fence will be signaled.
         Result = ID3D12CommandQueue_Signal(DirectQueue, Fence, CurrentFenceValue);
         AssertHR(Result);
 
@@ -728,22 +731,23 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         u64 Completed = ID3D12Fence_GetCompletedValue(Fence);
         if(Completed < CurrentFenceValue)
         {
+            // Specify event to be signaled when the fence reaches given value
             Result = ID3D12Fence_SetEventOnCompletion(Fence, CurrentFenceValue, FenceEvent);
             AssertHR(Result);
 
+            // Blocking wait util event is signaled
             WaitForSingleObject(FenceEvent, INFINITE);
         }
-
-        FrameIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
+        BackBufferIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(SwapChain);
     }
 
     ID3D12Fence_Release(Fence);
     CloseHandle(FenceEvent);
     ID3D12Resource_Release(VertexBuffer);
 
-    for(u32 RenderTargetIndex = 0; RenderTargetIndex < ArrayCount(RenderTargets); ++RenderTargetIndex)
+    for(u32 BufferIndex = 0; BufferIndex < ArrayCount(BackBuffers); ++BufferIndex)
     {
-        ID3D12Resource_Release(RenderTargets[RenderTargetIndex]);
+        ID3D12Resource_Release(BackBuffers[BufferIndex]);
     }
 
     ID3D12GraphicsCommandList_Release(CommandList);

@@ -1,6 +1,6 @@
 # D3D12-Minimal-C
 
-D3D12 single C file samples for Win32
+D3D12 single C file samples for Win32. No dependencies. No build systems. No project files.
 
 
 ### Build
