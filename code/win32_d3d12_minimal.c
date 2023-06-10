@@ -86,9 +86,9 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         WindowRectangle.right  = ResX;
         WindowRectangle.bottom = ResY;
 
-        POINT ScreenCenter = {0};
-        ScreenCenter.x = (GetSystemMetrics(SM_CXSCREEN) - WindowRectangle.right)/2;
-        ScreenCenter.y = (GetSystemMetrics(SM_CYSCREEN) - WindowRectangle.bottom)/2;
+        POINT CenteredWindowPosition = {0};
+        CenteredWindowPosition.x = (GetSystemMetrics(SM_CXSCREEN) - WindowRectangle.right)/2;
+        CenteredWindowPosition.y = (GetSystemMetrics(SM_CYSCREEN) - WindowRectangle.bottom)/2;
 
         DWORD ExtendedWindowStyle = 0;
         DWORD WindowStyle = WS_OVERLAPPEDWINDOW;
@@ -103,8 +103,8 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
             WindowClass.lpszClassName,
             "D3D12 Window",
             WindowStyle,
-            ScreenCenter.x,
-            100,
+            CenteredWindowPosition.x,
+            CenteredWindowPosition.y,
             WindowRectangle.right  - WindowRectangle.left,
             WindowRectangle.bottom - WindowRectangle.top,
             NULL, NULL,
@@ -175,7 +175,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
     }
 
     // Create device
-    ID3D12Device* Device = NULL;
+    ID3D12Device *Device = NULL;
     {
         Result = D3D12CreateDevice((IUnknown*)Adapter, MinimumFeatureLevel, &IID_ID3D12Device, &Device);
         AssertHR(Result);
@@ -312,7 +312,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLine,
         RootSignatureDesc.Version        = D3D_ROOT_SIGNATURE_VERSION_1_0;
         RootSignatureDesc.Desc_1_0.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-        ID3DBlob* SerializedRootSignature = NULL;
+        ID3DBlob *SerializedRootSignature = NULL;
         Result = D3D12SerializeVersionedRootSignature(&RootSignatureDesc, &SerializedRootSignature, NULL);
         AssertHR(Result);
 
