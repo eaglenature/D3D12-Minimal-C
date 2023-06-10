@@ -1,0 +1,36 @@
+# Binary files
+*.exe
+*.out
+*.dll
+*.lib
+*.obj
+*.so
+*.a
+*.o
+*.spv
+*.bin
+
+# Debug files
+*.pdb
+*.map
+*.exp
+
+# Directories
+bin/
+Debug/
+Release/
+build/
+test/build/
+temp/
+
+# Project files
+.cproject
+.project
+
+# Other files
+*.log
+*.tmp
+*.txt
+*.json
+*.mlt
+*~
